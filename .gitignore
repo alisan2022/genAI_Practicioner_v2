@@ -1,0 +1,13 @@
+.DS_Store
+.idea/
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+backend/.env
+mobile-app/.env
+
+mobile-app/node_modules/
+mobile-app/.expo/
+

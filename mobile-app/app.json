@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "GenAI Practitioner",
+    "slug": "genai-practitioner-v2",
+    "scheme": "genaipractitioner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "com.alisanalisanoglu.genaipractitioner",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Location is used to estimate the closest hospital for urgent triage support."
+      }
+    },
+    "android": {
+      "package": "com.alisanalisanoglu.genaipractitioner",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    }
+  }
+}
