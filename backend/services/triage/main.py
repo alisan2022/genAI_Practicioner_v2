@@ -136,7 +136,7 @@ def ai_triage(request: AITriageRequest) -> AITriageResponse:
         transport=transport,
         knowledge_cards=knowledge_cards,
         safety_disclaimer=DEFAULT_DISCLAIMER,
-        model="rules+ragnone",
+        model="rules+rag",
         decision_trace=[
             *assessment.decision_trace,
             knowledge_note,

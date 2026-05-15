@@ -86,7 +86,7 @@ def _fallback_chat_reply(request: ChatRequest) -> ChatResponse:
 
     return ChatResponse(
         reply="\n\n".join(dict.fromkeys(section for section in sections if section)),
-        model="rules+ragnone",
+        model="rules+rag",
         sources=sources,
         disclaimer=DEFAULT_DISCLAIMER,
     )

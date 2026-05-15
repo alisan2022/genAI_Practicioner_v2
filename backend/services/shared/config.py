@@ -25,7 +25,7 @@ MEDICAL_LLM_BASE_URL = os.getenv("MEDICAL_LLM_BASE_URL") or os.getenv("HF_BASE_U
 MEDICAL_LLM_MODEL = os.getenv("MEDICAL_LLM_MODEL", "").strip()
 MEDICAL_LLM_ENABLED = bool(MEDICAL_LLM_API_KEY and MEDICAL_LLM_MODEL)
 
-DEFAULT_RULES_MODEL_LABEL = "rules+ragnone"
+DEFAULT_RULES_MODEL_LABEL = "rules+rag"
 DEFAULT_DISCLAIMER = (
     "Educational guidance only. This app does not diagnose illness. "
     "If symptoms are severe, sudden, or worsening, contact NHS 111 or call 999 immediately."
