@@ -7,13 +7,14 @@ from fastapi import FastAPI
 
 from backend.services.shared.config import (
     DEFAULT_DISCLAIMER,
+    DEFAULT_SAFETY_MODEL_LABEL,
     FACILITY_SERVICE_URL,
     KNOWLEDGE_SERVICE_URL,
     TRANSPORT_SERVICE_URL,
 )
 from backend.services.shared.facility_catalog import recommend_facilities
 from backend.services.shared.knowledge_base import retrieve_documents
-from backend.services.shared.medical_llm import llm_status, maybe_refine_triage
+from backend.services.shared.medical_llm import generate_triage_assessment, llm_status
 from backend.services.shared.schemas import (
     AITriageRequest,
     AITriageResponse,
@@ -26,7 +27,11 @@ from backend.services.shared.schemas import (
     TransportOptionsResponse,
     TransportRecommendation,
 )
-from backend.services.shared.triage_logic import assess_request
+from backend.services.shared.triage_logic import (
+    apply_safety_constraints,
+    assess_safety_constraints,
+    build_safety_fallback_assessment,
+)
 from backend.services.transport.main import build_transport_options
 
 app = FastAPI(title="Triage Service")
@@ -41,7 +46,7 @@ def _post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
     return parsed
 
 
-def _load_knowledge(query: str, urgency: str) -> tuple[list[KnowledgeCard], str]:
+def _load_knowledge(query: str, urgency: str | None) -> tuple[list[KnowledgeCard], str]:
     payload = {"query": query, "urgency": urgency, "top_k": 4}
     try:
         parsed = _post_json(f"{KNOWLEDGE_SERVICE_URL}/retrieve", payload)
@@ -117,8 +122,27 @@ def health() -> dict[str, Any]:
 
 @app.post("/ai-triage", response_model=AITriageResponse)
 def ai_triage(request: AITriageRequest) -> AITriageResponse:
-    assessment = assess_request(request)
+    safety = assess_safety_constraints(request)
+    initial_cards, initial_knowledge_note = _load_knowledge(
+        safety.search_query,
+        safety.minimum_urgency,
+    )
+    llm_result = generate_triage_assessment(
+        request=request,
+        cards=initial_cards,
+        safety=safety,
+    )
+    if llm_result.assessment is None:
+        assessment = build_safety_fallback_assessment(request, safety)
+        model_label = DEFAULT_SAFETY_MODEL_LABEL
+    else:
+        assessment = apply_safety_constraints(llm_result.assessment, safety)
+        model_label = llm_result.model
+
     knowledge_cards, knowledge_note = _load_knowledge(assessment.search_query, assessment.urgency)
+    if not knowledge_cards:
+        knowledge_cards = initial_cards
+        knowledge_note = initial_knowledge_note
     facilities, facility_note = _load_facilities(request, assessment.urgency)
     transport, transport_note = _top_transport_option(request, assessment.urgency)
 
@@ -136,12 +160,15 @@ def ai_triage(request: AITriageRequest) -> AITriageResponse:
         transport=transport,
         knowledge_cards=knowledge_cards,
         safety_disclaimer=DEFAULT_DISCLAIMER,
-        model="rules+rag",
+        model=model_label,
         decision_trace=[
+            *safety.decision_trace,
+            initial_knowledge_note,
+            llm_result.note,
             *assessment.decision_trace,
             knowledge_note,
             facility_note,
             transport_note,
         ],
     )
-    return maybe_refine_triage(response)
+    return response

@@ -53,7 +53,7 @@ Project-specific points you can use:
 - The project is a Bournemouth-focused mobile triage and care-navigation prototype.
 - It helps users describe symptoms, receive a conservative urgency estimate, view Bournemouth-relevant services, and ask a follow-up question.
 - The system is not framed as diagnosis; it is framed as triage, signposting, and safer next-step support.
-- The current version deliberately reduces dependence on the LLM by making the core decision path deterministic first, retrieval-backed second, and optional LLM wording refinement third.
+- The current version deliberately uses the LLM for core clinical triage, while deterministic code only acts as a safety guardrail against dangerous under-escalation.
 
 Good sources to cite here:
 
@@ -110,12 +110,12 @@ Suggested requirements table:
 | ID | Requirement | Why it matters | Prototype evidence |
 | --- | --- | --- | --- |
 | R1 | The system must provide Bournemouth-relevant service signposting. | The brief requires local grounding; generic advice is not enough. | Local knowledge cards and facility catalogue include Bournemouth and Poole services. |
-| R2 | The system must distinguish between low, medium, and high urgency scenarios. | Users need differentiated next steps rather than a single generic answer. | Deterministic triage scoring in `backend/services/shared/triage_logic.py`. |
-| R3 | High-risk red flags must trigger immediate escalation advice. | Safeguarding is a core assessment criterion. | Red-flag keyword handling and emergency override. |
-| R4 | The system must return safe next actions, not diagnoses. | Reduces legal and ethical risk. | Disclaimers, rule-based summaries, and constrained LLM prompts. |
+| R2 | The system must distinguish between low, medium, and high urgency scenarios using LLM-led triage. | Users need differentiated next steps rather than a single generic answer. | LLM triage generation in `backend/services/shared/medical_llm.py`. |
+| R3 | High-risk red flags must trigger immediate escalation advice. | Safeguarding is a core assessment criterion. | Safety guardrails, red-flag minimum urgency, and emergency override in `triage_logic.py`. |
+| R4 | The system must return safe next actions, not diagnoses. | Reduces legal and ethical risk. | Disclaimers, structured LLM output, and constrained prompts. |
 | R5 | The system should retrieve supporting guidance from verified local or NHS-style sources. | Improves transparency and Bournemouth relevance. | Knowledge retrieval layer and surfaced knowledge cards. |
 | R6 | The system should rank nearby care options using urgency and optional route context. | Makes recommendations actionable, not merely descriptive. | Facility and route-ranking logic plus location-aware UI. |
-| R7 | The prototype must remain useful if the LLM is unavailable. | Safety and resilience should not depend on an external model. | Rules + RAG fallbacks and optional LLM refinement only. |
+| R7 | The prototype must degrade safely if the LLM is unavailable. | The app should not crash, but fallback should not pretend to be full clinical triage. | `safety-guardrails` fallback mode and conservative safety signposting. |
 | R8 | The mobile UI must support a realistic end-to-end user journey. | This is explicitly assessed in the prototype criterion. | Symptom form, safety toggles, transport, facility cards, retrieval view, and follow-up chat. |
 | R9 | The system should minimise unnecessary personal data collection. | Supports UK GDPR-oriented data minimisation. | No account creation; only symptoms, basic context, and optional location. |
 | R10 | The team must be able to justify decisions and evidence them professionally. | Required for report and appendix marks. | Proposal, meeting records, task board, risk log, evaluation artefacts. |
@@ -135,7 +135,7 @@ Describe the overall product briefly:
 - mobile-first user interaction
 - gateway as single entry point
 - separate services for triage, knowledge, facility, transport, and chat
-- optional LLM refinement, not LLM dependency
+- LLM-led triage bounded by deterministic safety guardrails
 
 #### 4.2 Why the architecture was chosen
 
@@ -150,23 +150,24 @@ Arguments you can develop:
 - Facility and transport services are separated because route ranking and transport suitability are operational concerns distinct from symptom assessment.
 - Chat is separated because conversational follow-up has a different risk profile from first-pass triage.
 
-#### 4.3 Why the project moved from LLM-led logic to rules + retrieval + optional refinement
+#### 4.3 Why the project moved to LLM-led triage with guardrails
 
 This is likely your strongest reflection-based design argument.
 
 State clearly that Version 2 changed the technical strategy because:
 
-- a fully LLM-led decision path is harder to justify in a safety-critical context
-- it introduces variability and hallucination risk
-- API dependency weakens reliability during demonstration or network failure
-- deterministic logic is easier to explain, test, and defend in a Level 7 report
+- the project requirement is for the LLM to perform the clinical triage reasoning
+- deterministic rules should not replace that LLM decision path
+- health-related LLM output still needs guardrails because hallucination and under-escalation are high-impact risks
+- a safe prototype can combine LLM reasoning, RAG grounding, structured output validation, and post-response safety constraints
 
 Then explain the final sequence:
 
-1. deterministic symptom and safeguard scoring
-2. retrieval of local/NHS-style support content
-3. facility and transport recommendation
-4. optional LLM wording refinement under strict constraints
+1. safety guardrails identify minimum escalation constraints
+2. retrieval supplies local/NHS-style support content to the LLM
+3. the medical LLM chooses urgency, reasoning, actions, and search query
+4. guardrails post-check the LLM output and raise unsafe under-escalation
+5. facility and transport services act on the final guarded urgency
 
 #### 4.4 How the LLM is constrained
 
@@ -174,15 +175,15 @@ This is important for distinction-level justification.
 
 Points directly supported by the code:
 
-- The LLM does not set urgency.
-- The refinement prompt explicitly says not to change urgency.
-- The LLM is told not to invent diagnoses, facilities, transport advice, or medicines.
+- The LLM does set urgency, but only within guardrail minimums.
+- The triage prompt explicitly says to return JSON with urgency, summary, reasoning, actions, self-care advice, OTC options, and search query.
+- The LLM is told not to invent diagnoses, facilities, phone numbers, service hours, transport advice, or medicines.
 - The follow-up assistant is told to use only supplied knowledge snippets.
-- If the model is unavailable or fails, the system falls back to rule-based output.
+- If the model is unavailable or fails, the system falls back to conservative `safety-guardrails` output.
 
 You should explicitly explain why this matters:
 
-- it preserves determinism in core safety decisions
+- it preserves deterministic enforcement around the highest-risk safety boundaries
 - it reduces hallucination scope
 - it improves explainability
 - it makes the prototype professionally defensible
@@ -218,13 +219,13 @@ Why this flow is justified:
 - it keeps the first interaction short
 - it gathers only data needed for safer routing
 - it moves from assessment to action
-- it supports both low-urgency reassurance and urgent escalation
+- it supports both low-urgency signposting and urgent escalation
 
 #### 4.7 Feasibility and graceful degradation
 
 This is a strong professional point. Explain that the system can still operate when:
 
-- the optional LLM is unavailable
+- the medical LLM is unavailable, because conservative safety fallback remains available
 - the routing service fails, because a heuristic distance fallback exists
 - dependent services fail, because local fallbacks are implemented in the triage service
 
@@ -246,10 +247,10 @@ Use or adapt this table:
 
 | Risk category | Example risk | Severity | Likely impact on Bournemouth users | Mitigation in the prototype |
 | --- | --- | --- | --- | --- |
-| Technical | LLM hallucination or unstable output | High | Unsafe or misleading health advice | Core urgency is rule-based; LLM only refines wording; fallback mode available |
+| Technical | LLM hallucination or unstable output | High | Unsafe or misleading health advice | LLM output is structured, RAG-grounded, and post-checked by safety guardrails; fallback mode available |
 | Technical | Routing API failure | Medium | Poor facility ranking or missing travel estimates | Heuristic route fallback |
 | Ethical | Over-reliance on AI advice | High | Users may delay proper care | Clear disclaimer, emergency escalation, service signposting |
-| Ethical | Under-escalation of serious symptoms | High | Harm through delayed treatment | Red-flag keyword detection, emergency override, conservative escalation |
+| Ethical | Under-escalation of serious symptoms | High | Harm through delayed treatment | Red-flag minimum urgency, emergency override, conservative escalation |
 | Data | Over-collection of personal information | Medium | Unnecessary privacy exposure | Minimal input set, optional location only |
 | Data | Sensitive logs retained inappropriately | Medium | Privacy and compliance risk | Explain that production deployment should minimise, anonymise, and control retention |
 | Social | Low digital literacy or stress reduces usability | Medium | Vulnerable users may misunderstand next steps | Simple form flow, short output, visible recommended actions |
@@ -329,8 +330,8 @@ A mixed-method approach is easiest to justify:
 
 Use these repo-backed points:
 
-- low-urgency cold test returns self-care advice
-- high-urgency chest-pain test escalates appropriately
+- LLM-led endpoint test shows the LLM result owns low-urgency output
+- guardrail tests show chest pain and breathlessness force high-urgency safety constraints
 - knowledge retrieval surfaces Bournemouth or NHS 111 cards
 - transport logic prefers ride-hailing when ambulance delay is high but no emergency red flag exists
 - location-aware facility ranking exposes route metrics
@@ -346,7 +347,7 @@ This is important for higher marks.
 
 - The current evaluation is scenario-based and developer-defined rather than clinician-validated.
 - The knowledge base is curated but limited in coverage.
-- Keyword scoring can miss unusual symptom phrasing.
+- Guardrail keyword matching can miss unusual symptom phrasing, so the LLM prompt and user-facing escalation wording must also remain conservative.
 - Live service data is simplified rather than fully integrated from operational NHS systems.
 - Real user evaluation with Bournemouth residents has not yet been completed.
 
@@ -354,7 +355,7 @@ This is important for higher marks.
 
 Your key claim should be:
 
-- Even with these limitations, the prototype demonstrates a safer and more defensible design choice than an unconstrained LLM-first approach, because its most safety-critical decisions are rule-based, inspectable, and testable.
+- Even with these limitations, the prototype demonstrates a safer and more defensible design choice than an unconstrained LLM-only approach, because LLM clinical reasoning is bounded by inspectable, testable safety guardrails.
 
 ### 7. Reflection on Major Decisions and Changes
 
@@ -363,7 +364,7 @@ This section should feel reflective, not like a second design section.
 Strong reflection points for this project:
 
 - The move from the original multi-client direction to one Expo mobile app simplified delivery and improved coherence.
-- The move from heavier LLM dependence to deterministic triage plus RAG plus optional refinement improved safety, explainability, and demonstrability.
+- The move from unclear triage ownership to LLM-led triage plus RAG plus safety guardrails improved consistency, explainability, and demonstrability.
 - The addition of location-aware ranking made recommendations more actionable.
 - The fallback-first mindset changed the project from a fragile demo into a more professionally defensible prototype.
 
@@ -433,4 +434,3 @@ When you turn this scaffold into the real report:
 - do not claim clinical accuracy you have not evidenced
 - do not fabricate team evidence
 - add an appendix stating exactly how AI was used
-

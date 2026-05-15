@@ -4,7 +4,7 @@ GenAI Practitioner v2 is a clean rebuild of the Bournemouth health-triage protot
 
 ## Things Reconsidered in Version 2
 
-The original project already is strong :
+The original project already is strong:
 
 - a Python microservices backend
 - Bournemouth-specific facility recommendations
@@ -12,14 +12,15 @@ The original project already is strong :
 - an LLM orchestration flow
 - two separate mobile clients (`Flutter` and `Expo`)
 
-The main issues were architectural duplication and too much emphasis on the model for core decisioning. For coursework and demo safety, the new version keeps the same product idea but changes the implementation strategy:
+The main issues were architectural duplication and inconsistent ownership of triage decisions. Version 2 keeps the same product idea but makes the clinical reasoning path explicit:
 
 - one mobile app instead of two
-- deterministic triage logic first
-- RAG-backed local knowledge retrieval second
-- optional medical LLM refinement third
+- medical LLM-led clinical triage
+- deterministic guardrails that only restrict unsafe or under-escalated answers
+- RAG-backed Bournemouth knowledge retrieval before and after the LLM response
+- conservative safety fallback only when the LLM is unavailable
 
-That means the app still feels intelligent, but it does not collapse if an external model is unavailable.
+That means the app uses the LLM for triage, while the non-LLM code acts as a safety boundary rather than the clinical decision-maker.
 
 ## v2 Architecture
 
@@ -43,10 +44,11 @@ gateway service
 ## Core Product Flow
 
 1. The user enters symptoms, risk details, and optional location.
-2. The triage service scores urgency with basic rule-based logic.
+2. Safety guardrails inspect only for red flags and minimum escalation constraints.
 3. The service retrieves Bournemouth and NHS-style guidance through a lightweight RAG layer.
-4. Facility and transport services return practical local recommendations.
-5. If a medical LLM is configured, it only refines the wording of the response and follow-up chat. It does not own the core triage decision.
+4. A healthcare-oriented LLM chooses the urgency, reasoning, next actions, self-care advice, and search query.
+5. Guardrails post-check the LLM output so it cannot under-escalate red flags or offer unsafe self-care for high urgency.
+6. Facility and transport services return practical local recommendations based on the final guarded urgency.
 
 ## Stack Choices
 
@@ -54,17 +56,17 @@ gateway service
 - Mobile: Expo + React Native + TypeScript
 - Store packaging: EAS config included for Android/iOS builds
 - RAG: lightweight local retrieval over curated Bournemouth knowledge cards
-- LLM support: optional OpenAI-compatible endpoint for healthcare-tuned models
+- LLM support: OpenAI-compatible endpoint for healthcare-tuned models
 
 ## Recommended Medical Models
 
-The backend is intentionally model-agnostic. If you want a healthcare-oriented model later, point `MEDICAL_LLM_MODEL` and `MEDICAL_LLM_BASE_URL` at an OpenAI-compatible provider or your own hosted model.
+The default recommended model is:
 
-Examples worth evaluating carefully:
+- `m42-health/Llama3-Med42-8B:fastest`
 
-- `aaditya/Llama3-OpenBioLLM-8B`
-- `FreedomIntelligence/HuatuoGPT-o1-8B`
-- `epfl-llm/meditron-7b`
+It was selected because it is a healthcare-focused Llama 3 8B conversational model available through an OpenAI-compatible Hugging Face Router workflow, which fits a responsive coursework prototype. This is still not a clinically validated deployment choice; it is a prototype model choice that must be guarded, evaluated, and replaced or validated before any real-world use.
+
+The backend remains configurable, so `MEDICAL_LLM_MODEL` and `MEDICAL_LLM_BASE_URL` can point at another OpenAI-compatible provider or a self-hosted model.
 
 ## Clone and Run
 
@@ -77,8 +79,8 @@ Examples worth evaluating carefully:
 ### 1. Clone the repository
 
 ```bash
-git clone <your-repo-url>
-cd GenAI-Practitioner-v2
+git clone https://github.com/alisan2022/genAI_Practicioner_v2.git
+cd genAI_Practicioner_v2
 ```
 
 ### 2. Backend setup
@@ -98,11 +100,13 @@ Gateway:
 curl http://127.0.0.1:8000/health
 ```
 
-The backend works without any LLM credentials. If you want the optional medical wording layer, copy the example file and add your own key:
+Full clinical triage requires an LLM API key. Without credentials, the backend still starts, but triage responses use conservative safety fallback guidance rather than the full LLM-led pathway.
 
 ```bash
 cp backend/.env.example backend/.env
 ```
+
+Then edit `backend/.env` and add your own Hugging Face or OpenAI-compatible API key.
 
 ### 3. Mobile app setup
 
@@ -142,9 +146,9 @@ npm start
 
 If you are using a simulator on the same machine, the app can usually connect without setting `.env`.
 
-## Optional LLM Configuration
+## LLM Configuration
 
-Copy the example file only if you want LLM refinement/chat:
+Copy the example file:
 
 ```bash
 cp backend/.env.example backend/.env
@@ -152,7 +156,7 @@ cp backend/.env.example backend/.env
 
 Then add your own token inside `backend/.env`.
 
-Without this file, the app still works in rules + RAG mode.
+Without this file, the app still runs but uses `safety-guardrails` fallback mode for triage.
 
 ## Project Structure
 
@@ -170,7 +174,7 @@ mobile-app/
 
 - If Expo says the local service is unavailable, make sure the backend is still running and that `mobile-app/.env` contains your current LAN IP.
 - If you change networks, your LAN IP may change and you may need to update `mobile-app/.env`.
-- If the optional LLM is not configured, the app should still work using deterministic triage plus local retrieval.
+- If the LLM is not configured, the backend should still answer, but the model label will be `safety-guardrails` and the response is conservative fallback guidance.
 
 ## Store Build Notes
 
@@ -193,4 +197,4 @@ Before release:
 
 ## Safety Position
 
-This is an educational triage prototype for coursework and demonstration. It is not a medical diagnosis system, it should not replace clinicians, and it should always escalate emergency warning signs immediately.
+This is an educational triage prototype for coursework and demonstration. It is not a medical diagnosis system, it should not replace clinicians, and it should always use guardrails to escalate emergency warning signs immediately.

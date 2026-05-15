@@ -6,30 +6,22 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.services.chat.main import _fallback_chat_reply
+from backend.services.shared.medical_llm import LLMRunResult
 from backend.services.shared import facility_catalog
 from backend.services.shared.route_intelligence import RouteAssessment
 from backend.services.shared.knowledge_base import retrieve_documents
 from backend.services.shared.schemas import AITriageRequest, ChatRequest, TransportOptionsRequest
-from backend.services.shared.triage_logic import assess_request
+from backend.services.shared.triage_logic import (
+    BasicAssessment,
+    apply_safety_constraints,
+    assess_safety_constraints,
+)
+from backend.services.triage import main as triage_main
 from backend.services.transport.main import build_transport_options
 
 
-def test_low_urgency_cold_returns_self_care() -> None:
-    assessment = assess_request(
-        AITriageRequest(
-            symptoms="Mild cold, blocked nose, and light headache since this morning",
-            age=28,
-            pain_level=2,
-        )
-    )
-
-    assert assessment.urgency == "low"
-    assert assessment.self_care_advice
-    assert "Paracetamol" in assessment.otc_options
-
-
-def test_high_urgency_chest_pain_is_escalated() -> None:
-    assessment = assess_request(
+def test_red_flag_guardrail_requires_high_urgency() -> None:
+    safety = assess_safety_constraints(
         AITriageRequest(
             symptoms="Sudden chest pain and shortness of breath",
             age=57,
@@ -37,8 +29,63 @@ def test_high_urgency_chest_pain_is_escalated() -> None:
         )
     )
 
+    assert safety.minimum_urgency == "high"
+    assert safety.red_flags
+
+
+def test_guardrail_raises_unsafe_llm_under_escalation() -> None:
+    safety = assess_safety_constraints(
+        AITriageRequest(symptoms="Sudden chest pain and shortness of breath")
+    )
+    unsafe_llm_output = BasicAssessment(
+        urgency="low",
+        summary="The model incorrectly treated the request as minor.",
+        reasoning=["Model said this sounded suitable for pharmacy."],
+        recommended_actions=["Rest and monitor symptoms."],
+        self_care_advice=["Drink fluids."],
+        otc_options=["Paracetamol"],
+        search_query="chest pain shortness of breath",
+        decision_trace=["Generated clinical triage with medical LLM."],
+    )
+
+    assessment = apply_safety_constraints(unsafe_llm_output, safety)
+
     assert assessment.urgency == "high"
     assert any("999" in action for action in assessment.recommended_actions)
+    assert assessment.self_care_advice == []
+    assert assessment.otc_options == []
+
+
+def test_ai_triage_uses_llm_for_core_urgency(monkeypatch) -> None:
+    def fake_generate_triage_assessment(*args, **kwargs) -> LLMRunResult:
+        return LLMRunResult(
+            assessment=BasicAssessment(
+                urgency="low",
+                summary="Low urgency LLM assessment for mild cold symptoms.",
+                reasoning=["The LLM judged this as a mild upper respiratory symptom pattern."],
+                recommended_actions=["Use community pharmacy advice if symptoms bother you."],
+                self_care_advice=["Rest and hydrate over the next 24 to 48 hours."],
+                otc_options=["Paracetamol"],
+                search_query="mild cold pharmacy self care Bournemouth",
+                decision_trace=["Generated clinical triage with medical LLM."],
+            ),
+            note="Generated clinical triage with medical LLM.",
+            model="m42-health/Llama3-Med42-8B:fastest",
+        )
+
+    monkeypatch.setattr(triage_main, "generate_triage_assessment", fake_generate_triage_assessment)
+
+    response = triage_main.ai_triage(
+        AITriageRequest(
+            symptoms="Mild cold, blocked nose, and light headache since this morning",
+            age=28,
+            pain_level=2,
+        )
+    )
+
+    assert response.urgency == "low"
+    assert response.model == "m42-health/Llama3-Med42-8B:fastest"
+    assert any("medical LLM" in step for step in response.decision_trace)
 
 
 def test_knowledge_retrieval_surfaces_bournemouth_services() -> None:

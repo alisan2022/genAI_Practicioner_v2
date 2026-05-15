@@ -81,6 +81,18 @@ class BasicAssessment:
     decision_trace: list[str]
 
 
+@dataclass(slots=True)
+class SafetyAssessment:
+    minimum_urgency: UrgencyLevel | None
+    red_flags: list[str]
+    caution_flags: list[str]
+    search_query: str
+    decision_trace: list[str]
+
+
+URGENCY_RANK: dict[UrgencyLevel, int] = {"low": 0, "medium": 1, "high": 2}
+
+
 def _normalise(text: str) -> str:
     return " ".join(text.lower().strip().split())
 
@@ -95,6 +107,12 @@ def _keyword_hits(text: str, lookup: OrderedDict[str, str]) -> list[str]:
         if keyword in text:
             hits.append(keyword)
     return hits
+
+
+def _raise_to_at_least(current: UrgencyLevel, minimum: UrgencyLevel | None) -> UrgencyLevel:
+    if minimum is None:
+        return current
+    return minimum if URGENCY_RANK[minimum] > URGENCY_RANK[current] else current
 
 
 def _summary_for_urgency(urgency: UrgencyLevel) -> str:
@@ -138,85 +156,150 @@ def _otc_suggestions(symptoms_text: str, urgency: UrgencyLevel) -> list[str]:
     return found
 
 
-def assess_request(payload: AITriageRequest) -> BasicAssessment:
+def assess_safety_constraints(payload: AITriageRequest) -> SafetyAssessment:
     symptoms_text = _normalise(payload.symptoms)
     known_conditions = _extract_conditions(payload.known_conditions)
 
-    score = 0
-    reasoning: list[str] = []
-    trace = ["Started with deterministic symptom scoring."]
+    minimum_urgency: UrgencyLevel | None = None
+    red_flags: list[str] = []
+    caution_flags: list[str] = []
+    trace = ["Checked deterministic safety constraints before LLM triage."]
 
     if payload.emergency_signs_confirmed:
-        score = max(score, 6)
-        reasoning.append("Emergency warning signs were explicitly confirmed.")
-        trace.append("Emergency override was applied.")
+        minimum_urgency = "high"
+        red_flags.append("Emergency warning signs were explicitly confirmed.")
+        trace.append("Emergency guardrail requires high urgency.")
 
     high_hits = _keyword_hits(symptoms_text, HIGH_URGENCY_KEYWORDS)
     if high_hits:
-        score = max(score, 4)
-        reasoning.extend(HIGH_URGENCY_KEYWORDS[item] for item in high_hits)
-        trace.append(f"Matched high-risk symptoms: {', '.join(high_hits[:3])}.")
+        minimum_urgency = "high"
+        red_flags.extend(HIGH_URGENCY_KEYWORDS[item] for item in high_hits)
+        trace.append(f"High-risk guardrail matched: {', '.join(high_hits[:3])}.")
 
     medium_hits = _keyword_hits(symptoms_text, MEDIUM_URGENCY_KEYWORDS)
     if medium_hits:
-        score += min(len(medium_hits), 2)
-        reasoning.extend(MEDIUM_URGENCY_KEYWORDS[item] for item in medium_hits[:2])
-        trace.append(f"Matched medium-risk symptoms: {', '.join(medium_hits[:3])}.")
+        caution_flags.extend(MEDIUM_URGENCY_KEYWORDS[item] for item in medium_hits[:3])
+        trace.append(f"Provided caution hints to LLM: {', '.join(medium_hits[:3])}.")
 
     if payload.pain_level is not None:
         if payload.pain_level >= 8:
-            score += 2
-            reasoning.append("Pain level is severe.")
-            trace.append("Pain score increased urgency.")
+            minimum_urgency = _raise_to_at_least(minimum_urgency or "low", "medium")
+            caution_flags.append("Pain level is severe.")
+            trace.append("Severe pain guardrail requires at least medium urgency.")
         elif payload.pain_level >= 5:
-            score += 1
-            reasoning.append("Pain level is moderate.")
-            trace.append("Moderate pain slightly increased urgency.")
+            caution_flags.append("Pain level is moderate.")
+            trace.append("Moderate pain shared with LLM as caution context.")
 
     if payload.duration_hours is not None and payload.duration_hours >= 72:
-        score += 1
-        reasoning.append("Symptoms have lasted for more than three days.")
-        trace.append("Symptom duration increased caution.")
+        caution_flags.append("Symptoms have lasted for more than three days.")
+        trace.append("Long duration shared with LLM as caution context.")
 
     if payload.age is not None and (payload.age <= 5 or payload.age >= 75):
-        score += 1
-        reasoning.append("Age increases clinical risk, so earlier escalation is safer.")
-        trace.append("Age-based safeguard applied.")
+        minimum_urgency = _raise_to_at_least(minimum_urgency or "low", "medium")
+        caution_flags.append("Age increases clinical risk, so earlier escalation is safer.")
+        trace.append("Age guardrail requires at least medium urgency.")
 
     risky_conditions = sorted(known_conditions.intersection(HIGH_RISK_CONDITIONS))
     if risky_conditions:
-        score += 1
-        reasoning.append(
-            "Known conditions increase risk: " + ", ".join(risky_conditions) + "."
-        )
-        trace.append("Long-term condition safeguard applied.")
+        minimum_urgency = _raise_to_at_least(minimum_urgency or "low", "medium")
+        caution_flags.append("Known conditions increase risk: " + ", ".join(risky_conditions) + ".")
+        trace.append("Long-term condition guardrail requires at least medium urgency.")
 
     if payload.mobility_limited:
-        trace.append("Mobility limitation captured for transport selection.")
+        caution_flags.append("Mobility limitation may affect safe transport choice.")
+        trace.append("Mobility limitation shared with LLM as caution context.")
 
-    if score >= 4:
-        urgency: UrgencyLevel = "high"
-    elif score >= 2:
-        urgency = "medium"
-    else:
-        urgency = "low"
-
-    if not reasoning:
-        reasoning.append("No major red flags were detected in the provided details.")
-
-    search_parts = [urgency, symptoms_text]
+    search_parts = [symptoms_text]
     if risky_conditions:
         search_parts.append(" ".join(risky_conditions))
+    if red_flags:
+        search_parts.append("emergency warning signs")
+    if caution_flags:
+        search_parts.append("same day urgent care")
     search_query = " ".join(part for part in search_parts if part).strip()
-    trace.append(f"Assigned urgency: {urgency}.")
 
-    return BasicAssessment(
-        urgency=urgency,
-        summary=_summary_for_urgency(urgency),
-        reasoning=reasoning[:5],
-        recommended_actions=_actions_for_urgency(urgency),
-        self_care_advice=LOW_URGENCY_SELF_CARE.copy() if urgency == "low" else [],
-        otc_options=_otc_suggestions(symptoms_text, urgency),
+    return SafetyAssessment(
+        minimum_urgency=minimum_urgency,
+        red_flags=red_flags[:6],
+        caution_flags=caution_flags[:6],
         search_query=search_query,
         decision_trace=trace,
     )
+
+
+def apply_safety_constraints(
+    assessment: BasicAssessment,
+    safety: SafetyAssessment,
+) -> BasicAssessment:
+    original_urgency = assessment.urgency
+    assessment.urgency = _raise_to_at_least(assessment.urgency, safety.minimum_urgency)
+
+    if assessment.urgency != original_urgency:
+        assessment.decision_trace.append(
+            f"Safety guardrail raised urgency from {original_urgency} to {assessment.urgency}."
+        )
+        assessment.reasoning.insert(
+            0,
+            "Safety guardrails escalated the response because the details include higher-risk features.",
+        )
+
+    if safety.red_flags:
+        for flag in reversed(safety.red_flags[:2]):
+            if flag not in assessment.reasoning:
+                assessment.reasoning.insert(0, flag)
+        if not any("999" in action for action in assessment.recommended_actions):
+            assessment.recommended_actions.insert(
+                0,
+                "If severe symptoms are happening now, call 999 immediately.",
+            )
+
+    if assessment.urgency == "high":
+        assessment.self_care_advice = []
+        assessment.otc_options = []
+        if not any("urgent" in action.lower() or "999" in action for action in assessment.recommended_actions):
+            assessment.recommended_actions.insert(0, "Seek urgent medical help now.")
+    elif assessment.urgency == "medium":
+        if not any("111" in action or "same-day" in action.lower() for action in assessment.recommended_actions):
+            assessment.recommended_actions.append(
+                "Use NHS 111 or arrange same-day clinical review if symptoms persist or worsen."
+            )
+    else:
+        if not any("red flag" in action.lower() or "worse" in action.lower() for action in assessment.recommended_actions):
+            assessment.recommended_actions.append(
+                "Escalate urgently if symptoms become suddenly worse or red flags appear."
+            )
+
+    assessment.reasoning = assessment.reasoning[:6]
+    assessment.recommended_actions = assessment.recommended_actions[:6]
+    assessment.self_care_advice = assessment.self_care_advice[:6]
+    assessment.otc_options = assessment.otc_options[:6]
+    return assessment
+
+
+def build_safety_fallback_assessment(
+    payload: AITriageRequest,
+    safety: SafetyAssessment,
+) -> BasicAssessment:
+    urgency: UrgencyLevel = safety.minimum_urgency or "medium"
+    symptoms_text = _normalise(payload.symptoms)
+    reasoning = safety.red_flags + safety.caution_flags
+    if not reasoning:
+        reasoning = [
+            "The clinical triage model is unavailable, so the app is using conservative safety guidance only."
+        ]
+
+    assessment = BasicAssessment(
+        urgency=urgency,
+        summary=(
+            "Clinical triage model unavailable. Use this as safety signposting only and seek clinical advice if unsure."
+            if urgency != "high"
+            else "High urgency safety warning. The details include emergency warning signs."
+        ),
+        reasoning=reasoning[:6],
+        recommended_actions=_actions_for_urgency(urgency),
+        self_care_advice=LOW_URGENCY_SELF_CARE.copy() if urgency == "low" else [],
+        otc_options=_otc_suggestions(symptoms_text, urgency),
+        search_query=safety.search_query,
+        decision_trace=["Used safety fallback because LLM triage was unavailable."],
+    )
+    return apply_safety_constraints(assessment, safety)

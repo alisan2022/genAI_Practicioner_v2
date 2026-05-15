@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from backend.services.shared.config import DEFAULT_DISCLAIMER
+from backend.services.shared.config import DEFAULT_DISCLAIMER, DEFAULT_SAFETY_MODEL_LABEL
 from backend.services.shared.knowledge_base import retrieve_documents
 from backend.services.shared.medical_llm import answer_follow_up, llm_status
 from backend.services.shared.schemas import ChatRequest, ChatResponse
@@ -86,7 +86,7 @@ def _fallback_chat_reply(request: ChatRequest) -> ChatResponse:
 
     return ChatResponse(
         reply="\n\n".join(dict.fromkeys(section for section in sections if section)),
-        model="rules+rag",
+        model=DEFAULT_SAFETY_MODEL_LABEL,
         sources=sources,
         disclaimer=DEFAULT_DISCLAIMER,
     )

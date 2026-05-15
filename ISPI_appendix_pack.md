@@ -35,12 +35,12 @@ Suggested headings:
 | Requirement ID | Requirement | Source of requirement | Prototype element | Evidence file / figure |
 | --- | --- | --- | --- | --- |
 | R1 | Bournemouth-relevant signposting | Coursework brief + local need | Knowledge cards + facility list | Figure 1, Figure 2 |
-| R2 | Multi-level urgency support | User safety | Triage logic | `triage_logic.py` |
-| R3 | Red-flag escalation | Safeguarding | Emergency override + recommended actions | `triage_logic.py` |
+| R2 | Multi-level urgency support | User safety | LLM-led triage generation | `medical_llm.py` |
+| R3 | Red-flag escalation | Safeguarding | Safety guardrails + recommended actions | `triage_logic.py` |
 | R4 | Safe next-step guidance, not diagnosis | Ethics | Summary, actions, disclaimer | `App.tsx`, `config.py` |
 | R5 | Verified contextual support | Bournemouth grounding | Retrieval layer | `knowledge_base.py` |
 | R6 | Actionable nearby care ranking | Usability | Facility and route logic | `facility_catalog.py`, `route_intelligence.py` |
-| R7 | LLM optionality and fallbacks | Reliability | Rules + fallback architecture | `triage/main.py`, `medical_llm.py` |
+| R7 | Safe LLM fallback behaviour | Reliability | LLM-led triage with `safety-guardrails` fallback | `triage/main.py`, `medical_llm.py` |
 | R8 | Follow-up clarification | User journey | Chat flow | `App.tsx`, `chat/main.py` |
 
 ## Appendix D. Ethical Impact Assessment Builder
@@ -49,11 +49,11 @@ Suggested headings:
 | --- | --- |
 | System overview | A Bournemouth-focused mobile triage and care-navigation prototype that helps users move from symptom description to safer local next-step signposting. |
 | Privacy risks | Symptoms and optional location are sensitive; minimise inputs, avoid unnecessary identity collection, and define strict retention controls for any production deployment. |
-| Bias and fairness risks | Keyword-based systems can miss unusual phrasing; older adults, people with complex conditions, and digitally excluded users may be disproportionately affected by errors. |
-| Misinformation risks | Harm could occur if outputs falsely reassure users or signpost the wrong service; risk increases if an unconstrained LLM invents details. |
+| Bias and fairness risks | LLMs and guardrail keyword checks can both miss unusual phrasing; older adults, people with complex conditions, and digitally excluded users may be disproportionately affected by errors. |
+| Misinformation risks | Harm could occur if outputs falsely reassure users, under-escalate red flags, or signpost the wrong service; risk increases if an unconstrained LLM invents details. |
 | Safeguarding | Emergency red flags must trigger escalation; follow-up chat must not undermine urgent advice. |
 | Signposting strategy | Use NHS 111, UTC, A&E, GP, pharmacy, and Bournemouth/Poole local services according to urgency level. |
-| Mitigation plan | Deterministic core logic, constrained LLM usage, curated local knowledge, visible disclaimers, route-aware actionability, and explicit fallbacks. |
+| Mitigation plan | LLM-led triage with deterministic safety guardrails, curated local knowledge, visible disclaimers, route-aware actionability, structured JSON validation, and explicit fallbacks. |
 
 ## Appendix E. Legal and Social Checklist
 
@@ -88,8 +88,8 @@ Suggested headings:
 
 | Evidence item | What it demonstrates | Where it appears |
 | --- | --- | --- |
-| Test case: mild cold | Low-risk pathway returns self-care and OTC support | Appendix / test evidence |
-| Test case: chest pain + shortness of breath | High-risk pathway escalates urgently | Appendix / test evidence |
+| Test case: mild cold | LLM-led endpoint can return low-risk self-care and OTC support | Appendix / test evidence |
+| Test case: chest pain + shortness of breath | Safety guardrails prevent under-escalation and force urgent escalation | Appendix / test evidence |
 | Test case: knowledge retrieval | Local or NHS cards are surfaced | Appendix / retrieval evidence |
 | Test case: route-aware ranking | Nearby care is ranked using route metrics | Appendix / facility evidence |
 | Test case: chat fallback | Follow-up guidance remains safety-oriented | Appendix / chat evidence |
@@ -108,7 +108,7 @@ Write 4 to 6 sentences explaining:
 
 | ID | Risk or issue | Type | Probability | Impact | Mitigation | Owner | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| RL1 | LLM returns misleading wording | Technical / ethical | Medium | High | Keep urgency deterministic and constrain prompt | Team | Open |
+| RL1 | LLM returns misleading or under-escalated triage | Technical / ethical | Medium | High | Constrain prompt, validate JSON, RAG-ground output, and enforce deterministic safety guardrails | Team | Open |
 | RL2 | Local service details become outdated | Information quality | Medium | High | Cite official sources and review before submission/demo | Team | Open |
 | RL3 | Route API unavailable | Technical | Medium | Medium | Use heuristic fallback | Team | Managed |
 | RL4 | Prototype gathers more sensitive data than needed | Privacy | Low | High | Keep inputs minimal and location optional | Team | Managed |
@@ -169,4 +169,3 @@ Use these to produce a stronger reflective section:
 - Which feature was deliberately simplified, and why?
 - What did the team learn about balancing innovation with safety?
 - What would be the next professional step before any real-world deployment?
-
