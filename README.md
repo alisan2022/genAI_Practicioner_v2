@@ -58,15 +58,19 @@ gateway service
 - RAG: lightweight local retrieval over curated Bournemouth knowledge cards
 - LLM support: OpenAI-compatible endpoint for healthcare-tuned models
 
-## Recommended Medical Models
+## LLM Model Split
 
-The default recommended model is:
+The triage path uses the agreed clinical model:
 
-- `m42-health/Llama3-Med42-8B:fastest`
+- `m42-health/Llama3-Med42-8B`
 
-It was selected because it is a healthcare-focused Llama 3 8B conversational model available through an OpenAI-compatible Hugging Face Router workflow, which fits a responsive coursework prototype. This is still not a clinically validated deployment choice; it is a prototype model choice that must be guarded, evaluated, and replaced or validated before any real-world use.
+It is called through Hugging Face Router's `featherless-ai` text-generation/completions provider, because this model is not exposed through the generic chat-completions route on the current account. This preserves the clinical-model decision for triage while still keeping guardrails, RAG grounding, JSON validation, and visible disclaimers around its output.
 
-The backend remains configurable, so `MEDICAL_LLM_MODEL` and `MEDICAL_LLM_BASE_URL` can point at another OpenAI-compatible provider or a self-hosted model.
+Follow-up chat uses a separate chat-capable model:
+
+- `Qwen/Qwen2.5-72B-Instruct:fastest`
+
+The backend remains configurable, so `TRIAGE_LLM_MODEL`, `TRIAGE_LLM_BASE_URL`, `CHAT_LLM_MODEL`, and `CHAT_LLM_BASE_URL` can point at another OpenAI-compatible provider or a self-hosted model.
 
 ## Clone and Run
 

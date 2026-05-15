@@ -115,8 +115,8 @@ def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "service": "triage",
-        "llm_enabled": status["enabled"],
-        "model": status["model"],
+        "llm_enabled": status["triage_enabled"],
+        "model": status["triage_model"],
     }
 
 
@@ -164,7 +164,6 @@ def ai_triage(request: AITriageRequest) -> AITriageResponse:
         decision_trace=[
             *safety.decision_trace,
             initial_knowledge_note,
-            llm_result.note,
             *assessment.decision_trace,
             knowledge_note,
             facility_note,

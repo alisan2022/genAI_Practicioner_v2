@@ -8,12 +8,16 @@ from typing import Any
 from openai import OpenAI
 
 from .config import (
+    CHAT_LLM_API_KEY,
+    CHAT_LLM_BASE_URL,
+    CHAT_LLM_ENABLED,
+    CHAT_LLM_MODEL,
     DEFAULT_DISCLAIMER,
     DEFAULT_SAFETY_MODEL_LABEL,
-    MEDICAL_LLM_API_KEY,
-    MEDICAL_LLM_BASE_URL,
-    MEDICAL_LLM_ENABLED,
-    MEDICAL_LLM_MODEL,
+    TRIAGE_LLM_API_KEY,
+    TRIAGE_LLM_BASE_URL,
+    TRIAGE_LLM_ENABLED,
+    TRIAGE_LLM_MODEL,
 )
 from .schemas import AITriageRequest, ChatResponse, KnowledgeCard, UrgencyLevel
 from .triage_logic import BasicAssessment, SafetyAssessment
@@ -26,23 +30,41 @@ class LLMRunResult:
     model: str
 
 
-def _create_client() -> OpenAI | None:
-    if not MEDICAL_LLM_ENABLED:
+def _create_client(
+    *,
+    api_key: str | None,
+    base_url: str | None,
+    enabled: bool,
+) -> OpenAI | None:
+    if not enabled or not api_key:
         return None
 
-    kwargs: dict[str, Any] = {"api_key": MEDICAL_LLM_API_KEY}
-    if MEDICAL_LLM_BASE_URL:
-        kwargs["base_url"] = MEDICAL_LLM_BASE_URL
+    kwargs: dict[str, Any] = {"api_key": api_key}
+    if base_url:
+        kwargs["base_url"] = base_url
     return OpenAI(**kwargs)
 
 
-CLIENT = _create_client()
+TRIAGE_CLIENT = _create_client(
+    api_key=TRIAGE_LLM_API_KEY,
+    base_url=TRIAGE_LLM_BASE_URL,
+    enabled=TRIAGE_LLM_ENABLED,
+)
+CHAT_CLIENT = _create_client(
+    api_key=CHAT_LLM_API_KEY,
+    base_url=CHAT_LLM_BASE_URL,
+    enabled=CHAT_LLM_ENABLED,
+)
 
 
 def llm_status() -> dict[str, str | bool]:
     return {
-        "enabled": bool(CLIENT),
-        "model": MEDICAL_LLM_MODEL if CLIENT else DEFAULT_SAFETY_MODEL_LABEL,
+        "enabled": bool(TRIAGE_CLIENT),
+        "model": TRIAGE_LLM_MODEL if TRIAGE_CLIENT else DEFAULT_SAFETY_MODEL_LABEL,
+        "triage_enabled": bool(TRIAGE_CLIENT),
+        "triage_model": TRIAGE_LLM_MODEL if TRIAGE_CLIENT else DEFAULT_SAFETY_MODEL_LABEL,
+        "chat_enabled": bool(CHAT_CLIENT),
+        "chat_model": CHAT_LLM_MODEL if CHAT_CLIENT else DEFAULT_SAFETY_MODEL_LABEL,
     }
 
 
@@ -72,12 +94,39 @@ def _extract_text(response: object) -> str:
     return "\n".join(chunks).strip()
 
 
-def _create_completion(prompt: str, *, max_tokens: int = 700) -> str:
-    if CLIENT is None:
+def _extract_completion_text(response: object) -> str:
+    choices = getattr(response, "choices", None)
+    if not isinstance(choices, list):
         return ""
 
-    response = CLIENT.chat.completions.create(
-        model=MEDICAL_LLM_MODEL,
+    chunks: list[str] = []
+    for choice in choices:
+        text = getattr(choice, "text", None)
+        if isinstance(text, str) and text.strip():
+            chunks.append(text.strip())
+    return "\n".join(chunks).strip()
+
+
+def _create_triage_completion(prompt: str, *, max_tokens: int = 700) -> str:
+    if TRIAGE_CLIENT is None:
+        return ""
+
+    response = TRIAGE_CLIENT.completions.create(
+        model=TRIAGE_LLM_MODEL,
+        prompt=prompt,
+        temperature=0.1,
+        max_tokens=max_tokens,
+        stop=["<|eot_id|>", "<|end_of_text|>"],
+    )
+    return _extract_completion_text(response)
+
+
+def _create_chat_completion(prompt: str, *, max_tokens: int = 700) -> str:
+    if CHAT_CLIENT is None:
+        return ""
+
+    response = CHAT_CLIENT.chat.completions.create(
+        model=CHAT_LLM_MODEL,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.1,
         max_tokens=max_tokens,
@@ -110,6 +159,8 @@ def _parse_json_object(raw: str) -> dict[str, Any] | None:
 
 
 def _clean_list(value: object, *, limit: int = 6) -> list[str]:
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
     if not isinstance(value, list):
         return []
     cleaned: list[str] = []
@@ -147,7 +198,7 @@ def generate_triage_assessment(
     cards: list[KnowledgeCard],
     safety: SafetyAssessment,
 ) -> LLMRunResult:
-    if CLIENT is None:
+    if TRIAGE_CLIENT is None:
         return LLMRunResult(
             assessment=None,
             note="LLM triage skipped because no model client is configured.",
@@ -164,7 +215,7 @@ def generate_triage_assessment(
         },
     }
 
-    prompt = """
+    instruction = """
 You are the clinical triage reasoning model inside a Bournemouth urgent-care navigation prototype.
 
 Your job:
@@ -190,15 +241,22 @@ Each list must contain short patient-friendly strings. Keep otc_options empty fo
 
 Payload:
 """.strip() + "\n" + json.dumps(prompt_payload, ensure_ascii=False)
+    prompt = (
+        "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n"
+        "You are a careful clinical triage assistant. Follow the user's JSON-output instruction exactly."
+        "<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n"
+        f"{instruction}"
+        "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+    )
 
     try:
-        raw = _create_completion(prompt, max_tokens=900)
+        raw = _create_triage_completion(prompt, max_tokens=900)
         parsed = _parse_json_object(raw)
         if parsed is None:
             return LLMRunResult(
                 assessment=None,
                 note="LLM triage returned non-JSON output.",
-                model=MEDICAL_LLM_MODEL,
+                model=TRIAGE_LLM_MODEL,
             )
 
         urgency = _coerce_urgency(parsed.get("urgency"))
@@ -207,7 +265,7 @@ Payload:
             return LLMRunResult(
                 assessment=None,
                 note="LLM triage JSON missed required urgency or summary.",
-                model=MEDICAL_LLM_MODEL,
+                model=TRIAGE_LLM_MODEL,
             )
 
         search_query = parsed.get("search_query")
@@ -241,13 +299,13 @@ Payload:
         return LLMRunResult(
             assessment=assessment,
             note="Generated clinical triage with medical LLM.",
-            model=MEDICAL_LLM_MODEL,
+            model=TRIAGE_LLM_MODEL,
         )
     except Exception:
         return LLMRunResult(
             assessment=None,
             note="LLM triage failed and safety fallback was used.",
-            model=MEDICAL_LLM_MODEL,
+            model=TRIAGE_LLM_MODEL,
         )
 
 
@@ -258,7 +316,7 @@ def answer_follow_up(
     history: list[dict[str, str]],
     cards: list[KnowledgeCard],
 ) -> ChatResponse | None:
-    if CLIENT is None:
+    if CHAT_CLIENT is None:
         return None
 
     prompt_payload = {
@@ -282,11 +340,11 @@ Rules:
 Conversation payload:
 """.strip() + "\n" + json.dumps(prompt_payload, ensure_ascii=False)
 
-        reply = _create_completion(prompt, max_tokens=700)
+        reply = _create_chat_completion(prompt, max_tokens=700)
         if reply:
             return ChatResponse(
                 reply=reply,
-                model=MEDICAL_LLM_MODEL,
+                model=CHAT_LLM_MODEL,
                 sources=[card.source for card in cards],
                 disclaimer=DEFAULT_DISCLAIMER,
             )

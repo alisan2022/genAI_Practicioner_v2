@@ -70,7 +70,7 @@ def test_ai_triage_uses_llm_for_core_urgency(monkeypatch) -> None:
                 decision_trace=["Generated clinical triage with medical LLM."],
             ),
             note="Generated clinical triage with medical LLM.",
-            model="m42-health/Llama3-Med42-8B:fastest",
+            model="m42-health/Llama3-Med42-8B",
         )
 
     monkeypatch.setattr(triage_main, "generate_triage_assessment", fake_generate_triage_assessment)
@@ -84,7 +84,7 @@ def test_ai_triage_uses_llm_for_core_urgency(monkeypatch) -> None:
     )
 
     assert response.urgency == "low"
-    assert response.model == "m42-health/Llama3-Med42-8B:fastest"
+    assert response.model == "m42-health/Llama3-Med42-8B"
     assert any("medical LLM" in step for step in response.decision_trace)
 
 

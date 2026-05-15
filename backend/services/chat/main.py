@@ -98,8 +98,8 @@ def health() -> dict[str, str | bool]:
     return {
         "status": "ok",
         "service": "chat",
-        "llm_enabled": status["enabled"],
-        "model": status["model"],
+        "llm_enabled": status["chat_enabled"],
+        "model": status["chat_model"],
     }
 
 
