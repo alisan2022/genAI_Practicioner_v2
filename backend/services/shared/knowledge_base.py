@@ -123,15 +123,16 @@ DOCUMENTS: tuple[KnowledgeDocument, ...] = (
     ),
     KnowledgeDocument(
         id="transport-guidance",
-        title="Choosing ambulance, ride-hailing, or self travel",
+        title="Choosing 999, NHS 111, ride-hailing, or self travel",
         source="Local transport triage policy",
         category="transport",
-        tags=("ambulance", "uber", "taxi", "ride", "self travel"),
+        tags=("999", "111", "ambulance", "uber", "taxi", "ride", "self travel"),
         urgency_hint="medium",
         body=(
-            "Ambulance should be preferred for confirmed emergency warning signs. "
-            "Ride-hailing may be appropriate for urgent but stable patients who do not need "
-            "ambulance support. Self travel is generally suitable only for lower-risk, stable cases."
+            "Call 999 for emergency warning signs or severe symptoms now. Use NHS 111 for urgent "
+            "but not immediately life-threatening advice. Ride-hailing may be appropriate for "
+            "stable low or medium urgency patients who do not need ambulance support. Self travel "
+            "is generally suitable only for lower-risk, stable cases."
         ),
     ),
     KnowledgeDocument(

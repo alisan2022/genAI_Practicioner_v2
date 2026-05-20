@@ -20,15 +20,15 @@ def build_transport_options(request: TransportOptionsRequest) -> list[TransportO
         return [
             TransportOption(
                 mode="ambulance",
-                rationale="Emergency warning signs are present, so ambulance support is the safest option.",
+                rationale="Emergency warning signs are present. Call 999 now and do not use ride-hailing or self travel as the main plan.",
                 eta_minutes=request.ambulance_delay_minutes,
                 suitability_score=1.0,
             ),
             TransportOption(
                 mode="ride_hailing",
-                rationale="Ride-hailing can be quicker in some cases, but ambulance remains the first choice when emergency signs are confirmed.",
-                eta_minutes=10,
-                suitability_score=0.25,
+                rationale="Ride-hailing is not appropriate when emergency warning signs are present.",
+                eta_minutes=None,
+                suitability_score=0.02,
             ),
             TransportOption(
                 mode="self_travel",
@@ -43,9 +43,9 @@ def build_transport_options(request: TransportOptionsRequest) -> list[TransportO
     self_score = 0.5
 
     if request.urgency == "high":
-        ambulance_score = 0.88
-        ride_score = 0.52
-        self_score = 0.14
+        ambulance_score = 0.95
+        ride_score = 0.08
+        self_score = 0.04
 
     if request.urgency == "medium":
         ambulance_score = 0.28
@@ -57,32 +57,40 @@ def build_transport_options(request: TransportOptionsRequest) -> list[TransportO
         ride_score = 0.4
         self_score = 0.9
 
-    if request.ambulance_delay_minutes is not None and request.urgency == "high":
-        if request.ambulance_delay_minutes > 25:
-            ambulance_score -= 0.3
-            ride_score += 0.3
-
     if request.mobility_limited:
-        ride_score += 0.12
+        if request.urgency != "high":
+            ride_score += 0.12
         self_score -= 0.2
 
     options = [
         TransportOption(
             mode="ambulance",
-            rationale="Ambulance becomes stronger when the condition looks severe or could deteriorate quickly.",
+            rationale=(
+                "High urgency means call 999 if symptoms are severe now, or NHS 111 for urgent advice if it is not immediately life-threatening."
+                if request.urgency == "high"
+                else "Ambulance becomes stronger when the condition looks severe or could deteriorate quickly."
+            ),
             eta_minutes=request.ambulance_delay_minutes,
             suitability_score=_clamp(ambulance_score),
         ),
         TransportOption(
             mode="ride_hailing",
-            rationale="Ride-hailing fits urgent but currently stable cases when supported travel is helpful.",
-            eta_minutes=10,
+            rationale=(
+                "Ride-hailing is only suitable for stable low or medium urgency cases, not high-urgency symptoms."
+                if request.urgency == "high"
+                else "Ride-hailing fits stable low or medium urgency cases when supported travel is helpful."
+            ),
+            eta_minutes=None if request.urgency == "high" else 10,
             suitability_score=_clamp(ride_score),
         ),
         TransportOption(
             mode="self_travel",
-            rationale="Self travel is usually only suitable when symptoms are stable and the person can move safely.",
-            eta_minutes=18,
+            rationale=(
+                "Self travel is not appropriate for high-urgency symptoms unless a clinician or emergency service tells you to travel."
+                if request.urgency == "high"
+                else "Self travel is usually only suitable when symptoms are stable and the person can move safely."
+            ),
+            eta_minutes=None if request.urgency == "high" else 18,
             suitability_score=_clamp(self_score),
         ),
     ]

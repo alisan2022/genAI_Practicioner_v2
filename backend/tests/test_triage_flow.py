@@ -95,12 +95,27 @@ def test_knowledge_retrieval_surfaces_bournemouth_services() -> None:
     assert any("Bournemouth" in card.title or "NHS 111" in card.title for card in cards)
 
 
-def test_transport_prefers_ride_hailing_when_high_delay() -> None:
+def test_transport_uses_ambulance_for_high_urgency_even_with_delay() -> None:
     options = build_transport_options(
         TransportOptionsRequest(
             urgency="high",
             emergency_signs_confirmed=False,
             ambulance_delay_minutes=45,
+            mobility_limited=False,
+        )
+    )
+
+    assert options[0].mode == "ambulance"
+    assert options[0].suitability_score > next(
+        option.suitability_score for option in options if option.mode == "ride_hailing"
+    )
+
+
+def test_transport_allows_ride_hailing_for_stable_medium_urgency() -> None:
+    options = build_transport_options(
+        TransportOptionsRequest(
+            urgency="medium",
+            emergency_signs_confirmed=False,
             mobility_limited=False,
         )
     )

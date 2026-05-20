@@ -213,6 +213,8 @@ const buildMapsUrl = (facility: Facility): string => {
   )})`;
 };
 
+const buildPhoneUrl = (phoneNumber: "999" | "111"): string => `tel:${phoneNumber}`;
+
 const makeId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const Section = ({
@@ -574,7 +576,14 @@ export default function App() {
     await Linking.openURL(buildMapsUrl(facility));
   };
 
+  const callNhs = async (phoneNumber: "999" | "111") => {
+    await Linking.openURL(buildPhoneUrl(phoneNumber));
+  };
+
   const currentUrgencyTheme = triage ? urgencyTheme[triage.urgency] : urgencyTheme.low;
+  const shouldShowEmergencyCalls = triage?.urgency === "high";
+  const shouldShowNhs111Call = triage?.urgency === "medium";
+  const canUseRideHailing = triage ? triage.urgency !== "high" : false;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -807,6 +816,29 @@ export default function App() {
                       </Text>
                     ) : null}
                   </View>
+                  {shouldShowEmergencyCalls ? (
+                    <View style={styles.urgentActionCard}>
+                      <Text style={styles.urgentActionTitle}>Do not use Uber for high-urgency symptoms</Text>
+                      <Text style={styles.urgentActionBody}>
+                        If symptoms are severe, sudden, or worsening, call 999 now. If it is urgent but not
+                        immediately life-threatening, call NHS 111 for the safest next step.
+                      </Text>
+                      <View style={styles.actionRow}>
+                        <ActionButton label="Call 999" onPress={() => callNhs("999")} />
+                        <ActionButton label="Call NHS 111" onPress={() => callNhs("111")} muted />
+                      </View>
+                    </View>
+                  ) : null}
+                  {shouldShowNhs111Call ? (
+                    <View style={styles.nhsActionCard}>
+                      <Text style={styles.urgentActionTitle}>Need help choosing where to go?</Text>
+                      <Text style={styles.urgentActionBody}>
+                        NHS 111 is suitable for urgent but not life-threatening symptoms. Ride-hailing or self
+                        travel should only be used if the person is stable enough to travel.
+                      </Text>
+                      <ActionButton label="Call NHS 111" onPress={() => callNhs("111")} muted />
+                    </View>
+                  ) : null}
                 </Section>
 
                 {triage.self_care_advice.length > 0 || triage.otc_options.length > 0 ? (
@@ -870,7 +902,9 @@ export default function App() {
                         ) : null}
                       </View>
                       <View style={styles.actionRow}>
-                        <ActionButton label="Uber" onPress={() => openUber(facility)} />
+                        {canUseRideHailing ? (
+                          <ActionButton label="Uber" onPress={() => openUber(facility)} />
+                        ) : null}
                         <ActionButton label="Maps" onPress={() => openMaps(facility)} muted />
                       </View>
                     </View>
@@ -1241,6 +1275,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#173E66",
+  },
+  urgentActionCard: {
+    borderRadius: 20,
+    padding: 16,
+    backgroundColor: "#FFF1EC",
+    borderWidth: 1,
+    borderColor: "#F3B9AA",
+    gap: 10,
+  },
+  nhsActionCard: {
+    borderRadius: 20,
+    padding: 16,
+    backgroundColor: "#F3F8FF",
+    borderWidth: 1,
+    borderColor: "#CFE0F5",
+    gap: 10,
+  },
+  urgentActionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#143253",
+  },
+  urgentActionBody: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: "#425C76",
   },
   actionRow: {
     flexDirection: "row",
