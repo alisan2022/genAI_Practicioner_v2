@@ -5,6 +5,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
+  Image,
   KeyboardAvoidingView,
   Linking,
   NativeModules,
@@ -80,7 +81,8 @@ type ChatMessage = {
 
 type ConnectionState = "idle" | "checking" | "connected" | "error";
 
-const placeholderApiBaseUrl = "https://your-api-domain.com";
+const placeholderApiBaseUrl = "https://alisan-api-domain.com";
+const splashArtwork = require("./assets/splash.png");
 const configuredApiBaseUrl = (process.env.EXPO_PUBLIC_API_BASE_URL || "").trim();
 const loopbackApiBaseUrls = ["http://127.0.0.1:8000", "http://localhost:8000"];
 
@@ -345,6 +347,7 @@ export default function App() {
   const [isSendingChat, setIsSendingChat] = useState(false);
 
   const reveal = useRef(new Animated.Value(0)).current;
+  const splashReveal = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     Animated.timing(reveal, {
@@ -354,6 +357,18 @@ export default function App() {
       useNativeDriver: true,
     }).start();
   }, [reveal]);
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(1200),
+      Animated.timing(splashReveal, {
+        toValue: 0,
+        duration: 360,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [splashReveal]);
 
   const checkConnection = async (preferredBaseUrl?: string): Promise<string | null> => {
     setConnectionState("checking");
@@ -971,6 +986,25 @@ export default function App() {
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.splashOverlay,
+          {
+            opacity: splashReveal,
+            transform: [
+              {
+                scale: splashReveal.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1.04, 1],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <Image source={splashArtwork} style={styles.splashArtwork} resizeMode="contain" />
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -979,6 +1013,19 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "#F7FBFF",
+  },
+  splashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#000000",
+    paddingHorizontal: 28,
+  },
+  splashArtwork: {
+    width: "100%",
+    maxWidth: 420,
+    aspectRatio: 1,
   },
   background: {
     flex: 1,

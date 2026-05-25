@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from .schemas import KnowledgeCard, UrgencyLevel
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class KnowledgeDocument:
     id: str
     title: str

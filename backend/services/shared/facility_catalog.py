@@ -7,7 +7,7 @@ from .route_intelligence import assess_route
 from .schemas import FacilityKind, FacilityRecommendation, UrgencyLevel
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class FacilityRecord:
     name: str
     kind: FacilityKind

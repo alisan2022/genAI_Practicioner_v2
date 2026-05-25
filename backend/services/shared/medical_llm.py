@@ -23,7 +23,7 @@ from .schemas import AITriageRequest, ChatResponse, KnowledgeCard, UrgencyLevel
 from .triage_logic import BasicAssessment, SafetyAssessment
 
 
-@dataclass(slots=True)
+@dataclass
 class LLMRunResult:
     assessment: BasicAssessment | None
     note: str

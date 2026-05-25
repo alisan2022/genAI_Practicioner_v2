@@ -69,7 +69,7 @@ OTC_OPTIONS = {
 }
 
 
-@dataclass(slots=True)
+@dataclass
 class BasicAssessment:
     urgency: UrgencyLevel
     summary: str
@@ -81,7 +81,7 @@ class BasicAssessment:
     decision_trace: list[str]
 
 
-@dataclass(slots=True)
+@dataclass
 class SafetyAssessment:
     minimum_urgency: UrgencyLevel | None
     red_flags: list[str]

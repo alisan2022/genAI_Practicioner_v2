@@ -5,7 +5,16 @@
     "scheme": "genaipractitioner",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
     "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "assets/*"
+    ],
     "ios": {
       "bundleIdentifier": "com.alisanalisanoglu.genaipractitioner",
       "supportsTablet": true,
@@ -15,6 +24,10 @@
     },
     "android": {
       "package": "com.alisanalisanoglu.genaipractitioner",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#000000"
+      },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
